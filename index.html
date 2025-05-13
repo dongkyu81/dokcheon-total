@@ -4,37 +4,46 @@
 <head>
   <meta charset="UTF-8" />
   <title>독천초 스마트팜 환경관리센서 대시보드</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4faf6; padding: 20px; }
-    h1 { text-align: center; font-size: 26px; margin-bottom: 10px; }
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #f5fdf8; }
+    h1 { text-align: center; margin-bottom: 10px; font-size: 24px; }
     .tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-    .tab { padding: 10px 20px; border-radius: 20px; background: #d9f2e6; cursor: pointer; font-weight: bold; }
+    .tab { padding: 10px 20px; border-radius: 20px; background: #d0f0df; cursor: pointer; font-weight: bold; }
     .tab.active { background: #2e8b57; color: white; }
-    .section { display: none; }
-    .section.active { display: block; }
-
-    .cards {
+    .cards, .graph-container {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
       gap: 16px;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
     .card {
       width: 160px;
-      background: #fff;
+      background: #ffffff;
       border-radius: 16px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
       padding: 16px;
       text-align: center;
     }
-    .card h3 { font-size: 14px; margin: 5px 0; color: #2b7a5b; }
+    .card h3 { margin: 4px 0; font-size: 14px; color: #333; }
     .value { font-size: 20px; font-weight: bold; }
     .status { font-size: 12px; margin-top: 6px; padding: 4px 8px; border-radius: 10px; display: inline-block; }
     .ok { background: #e6f4ea; color: #2e8b57; }
-    .warn { background: #fff7d6; color: #d18c00; }
+    .warn { background: #fff4d6; color: #d18c00; }
     .bad { background: #ffe6e6; color: #d13434; }
-    .timestamp { text-align: center; font-size: 13px; color: #888; margin-bottom: 10px; }
+    .timestamp { text-align: center; font-size: 13px; color: #666; margin-bottom: 10px; }
+    
+canvas {
+  display: block;
+  margin: 20px auto;
+  width: 840px !important;
+  height: 405px !important;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+}
+
   </style>
 </head>
 <body>
@@ -48,25 +57,37 @@
   <div class="tab" onclick="switchTab('향나무')">🌿 향나무</div>
 </div>
 
-<div id="dashboard"></div>
+<div class="timestamp" id="timestamp"></div>
+<div class="cards" id="sensorCards"></div>
+<div class="graph-container"><canvas id="sensorGraph"></canvas></div>
 
 <script>
-const dashboards = {
-  '꽃잔디':   { lux: [15000, 99999], moisture: [20, 35], soil: [15, 25], air: [10, 28], humid: [40, 70] },
-  '반송':     { lux: [15000, 99999], moisture: [15, 30], soil: [10, 20], air: [5, 25], humid: [40, 60] },
-  '고추':     { lux: [12000, 99999], moisture: [25, 45], soil: [20, 28], air: [18, 30], humid: [50, 80] },
-  '수박':     { lux: [16000, 99999], moisture: [30, 60], soil: [22, 30], air: [22, 35], humid: [60, 85] },
-  '향나무':   { lux: [14000, 99999], moisture: [20, 35], soil: [15, 25], air: [10, 28], humid: [40, 65] }
+const crops = {
+  '꽃잔디': { lux: [15000, 99999], moisture: [20, 35], soil: [15, 25], air: [10, 28], humid: [40, 70] },
+  '반송': { lux: [15000, 99999], moisture: [15, 30], soil: [10, 20], air: [5, 25], humid: [40, 60] },
+  '고추': { lux: [12000, 99999], moisture: [25, 45], soil: [20, 28], air: [18, 30], humid: [50, 80] },
+  '수박': { lux: [16000, 99999], moisture: [30, 60], soil: [22, 30], air: [22, 35], humid: [60, 85] },
+  '향나무': { lux: [14000, 99999], moisture: [20, 35], soil: [15, 25], air: [10, 28], humid: [40, 65] }
 };
 
-let currentTab = '꽃잔디';
+let current = '꽃잔디';
+let history = { lux: [], moisture: [], soil: [], air: [], humid: [], labels: [] };
+
+const ctx = document.getElementById("sensorGraph").getContext("2d");
+const sensorChart = new Chart(ctx, {
+  type: "line",
+  data: { labels: [], datasets: [] },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: true } },
+    scales: { y: { beginAtZero: false } }
+  }
+});
 
 function switchTab(name) {
-  currentTab = name;
-  document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(tab => {
-    if (tab.textContent.includes(name)) tab.classList.add('active');
-  });
+  current = name;
+  for (let key in history) if (Array.isArray(history[key])) history[key] = [];
+  history.labels = [];
   updateDashboard();
 }
 
@@ -74,35 +95,53 @@ function random(min, max) {
   return +(Math.random() * (max - min) + min).toFixed(1);
 }
 
+function status(val, [min, max]) {
+  return val < min ? ['bad','낮음'] : val > max ? ['warn','높음'] : ['ok','적정'];
+}
+
 function updateDashboard() {
-  const target = dashboards[currentTab];
-  const lux = random(10000, 20000);
-  const moisture = random(10, 60);
-  const soilTemp = random(10, 35);
-  const airTemp = random(5, 40);
-  const humid = random(30, 90);
+  const limits = crops[current];
+  const now = new Date();
+  const label = now.toLocaleTimeString("ko-KR", { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const vals = {
+    lux: random(10000, 20000),
+    moisture: random(10, 60),
+    soil: random(10, 35),
+    air: random(5, 40),
+    humid: random(30, 90)
+  };
 
-  const status = (val, [min, max]) =>
-    val < min ? ['bad', '낮음'] : val > max ? ['warn', '높음'] : ['ok', '적정'];
+  history.labels.push(label);
+  Object.keys(vals).forEach(k => {
+    history[k].push(vals[k]);
+    if (history[k].length > 10) history[k].shift();
+  });
+  if (history.labels.length > 10) history.labels.shift();
 
-  const luxStatus = status(lux, target.lux);
-  const moistureStatus = status(moisture, target.moisture);
-  const soilStatus = status(soilTemp, target.soil);
-  const airStatus = status(airTemp, target.air);
-  const humidStatus = status(humid, target.humid);
+  document.getElementById("timestamp").innerText = `데이터 수집 시간: ${now.toLocaleString("ko-KR")}`;
 
-  const html = `
-    <div class="timestamp">데이터 수집 시간: ${new Date().toLocaleString("ko-KR")}</div>
-    <div class="cards">
-      <div class="card"><h3>일조량</h3><div class="value">${lux} lux</div><div class="status ${luxStatus[0]}">${luxStatus[1]}</div></div>
-      <div class="card"><h3>토양 수분</h3><div class="value">${moisture} %</div><div class="status ${moistureStatus[0]}">${moistureStatus[1]}</div></div>
-      <div class="card"><h3>토양 온도</h3><div class="value">${soilTemp} ℃</div><div class="status ${soilStatus[0]}">${soilStatus[1]}</div></div>
-      <div class="card"><h3>대기 온도</h3><div class="value">${airTemp} ℃</div><div class="status ${airStatus[0]}">${airStatus[1]}</div></div>
-      <div class="card"><h3>대기 습도</h3><div class="value">${humid} %</div><div class="status ${humidStatus[0]}">${humidStatus[1]}</div></div>
-    </div>
-  `;
+  document.getElementById("sensorCards").innerHTML = Object.entries(vals).map(([key, val]) => {
+    const s = status(val, limits[key]);
+    const label = key === 'lux' ? '일조량' : key === 'moisture' ? '토양 수분' : key === 'soil' ? '토양 온도' : key === 'air' ? '대기 온도' : '대기 습도';
+    const unit = key === 'lux' ? 'lux' : key === 'humid' || key === 'moisture' ? '%' : '℃';
+    return `
+      <div class="card">
+        <h3>${label}</h3>
+        <div class="value">${val} ${unit}</div>
+        <div class="status ${s[0]}">${s[1]}</div>
+      </div>`;
+  }).join('');
 
-  document.getElementById("dashboard").innerHTML = html;
+  sensorChart.data.labels = [...history.labels];
+  sensorChart.data.datasets = Object.keys(vals).map((key, idx) => ({
+    label: key,
+    data: [...history[key]],
+    borderColor: ['#e67e22', '#2ecc71', '#3498db', '#9b59b6', '#e74c3c'][idx],
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    fill: true,
+    tension: 0.3
+  }));
+  sensorChart.update();
 }
 
 updateDashboard();
