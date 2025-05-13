@@ -1,0 +1,113 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>독천초 스마트팜 환경관리센서 대시보드</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4faf6; padding: 20px; }
+    h1 { text-align: center; font-size: 26px; margin-bottom: 10px; }
+    .tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+    .tab { padding: 10px 20px; border-radius: 20px; background: #d9f2e6; cursor: pointer; font-weight: bold; }
+    .tab.active { background: #2e8b57; color: white; }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .cards {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+    .card {
+      width: 160px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      padding: 16px;
+      text-align: center;
+    }
+    .card h3 { font-size: 14px; margin: 5px 0; color: #2b7a5b; }
+    .value { font-size: 20px; font-weight: bold; }
+    .status { font-size: 12px; margin-top: 6px; padding: 4px 8px; border-radius: 10px; display: inline-block; }
+    .ok { background: #e6f4ea; color: #2e8b57; }
+    .warn { background: #fff7d6; color: #d18c00; }
+    .bad { background: #ffe6e6; color: #d13434; }
+    .timestamp { text-align: center; font-size: 13px; color: #888; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>독천초 스마트팜 환경관리센서 대시보드</h1>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('꽃잔디')">🌸 꽃잔디</div>
+  <div class="tab" onclick="switchTab('반송')">🌲 반송</div>
+  <div class="tab" onclick="switchTab('고추')">🌶 고추</div>
+  <div class="tab" onclick="switchTab('수박')">🍉 수박</div>
+  <div class="tab" onclick="switchTab('향나무')">🌿 향나무</div>
+</div>
+
+<div id="dashboard"></div>
+
+<script>
+const dashboards = {
+  '꽃잔디':   { lux: [15000, 99999], moisture: [20, 35], soil: [15, 25], air: [10, 28], humid: [40, 70] },
+  '반송':     { lux: [15000, 99999], moisture: [15, 30], soil: [10, 20], air: [5, 25], humid: [40, 60] },
+  '고추':     { lux: [12000, 99999], moisture: [25, 45], soil: [20, 28], air: [18, 30], humid: [50, 80] },
+  '수박':     { lux: [16000, 99999], moisture: [30, 60], soil: [22, 30], air: [22, 35], humid: [60, 85] },
+  '향나무':   { lux: [14000, 99999], moisture: [20, 35], soil: [15, 25], air: [10, 28], humid: [40, 65] }
+};
+
+let currentTab = '꽃잔디';
+
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(tab => {
+    if (tab.textContent.includes(name)) tab.classList.add('active');
+  });
+  updateDashboard();
+}
+
+function random(min, max) {
+  return +(Math.random() * (max - min) + min).toFixed(1);
+}
+
+function updateDashboard() {
+  const target = dashboards[currentTab];
+  const lux = random(10000, 20000);
+  const moisture = random(10, 60);
+  const soilTemp = random(10, 35);
+  const airTemp = random(5, 40);
+  const humid = random(30, 90);
+
+  const status = (val, [min, max]) =>
+    val < min ? ['bad', '낮음'] : val > max ? ['warn', '높음'] : ['ok', '적정'];
+
+  const luxStatus = status(lux, target.lux);
+  const moistureStatus = status(moisture, target.moisture);
+  const soilStatus = status(soilTemp, target.soil);
+  const airStatus = status(airTemp, target.air);
+  const humidStatus = status(humid, target.humid);
+
+  const html = `
+    <div class="timestamp">데이터 수집 시간: ${new Date().toLocaleString("ko-KR")}</div>
+    <div class="cards">
+      <div class="card"><h3>일조량</h3><div class="value">${lux} lux</div><div class="status ${luxStatus[0]}">${luxStatus[1]}</div></div>
+      <div class="card"><h3>토양 수분</h3><div class="value">${moisture} %</div><div class="status ${moistureStatus[0]}">${moistureStatus[1]}</div></div>
+      <div class="card"><h3>토양 온도</h3><div class="value">${soilTemp} ℃</div><div class="status ${soilStatus[0]}">${soilStatus[1]}</div></div>
+      <div class="card"><h3>대기 온도</h3><div class="value">${airTemp} ℃</div><div class="status ${airStatus[0]}">${airStatus[1]}</div></div>
+      <div class="card"><h3>대기 습도</h3><div class="value">${humid} %</div><div class="status ${humidStatus[0]}">${humidStatus[1]}</div></div>
+    </div>
+  `;
+
+  document.getElementById("dashboard").innerHTML = html;
+}
+
+updateDashboard();
+setInterval(updateDashboard, 30000);
+</script>
+
+</body>
+</html>
